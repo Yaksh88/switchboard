@@ -21,6 +21,7 @@ dependencies = [
     "typer>=0.12",
     "rich>=13",
     "prometheus-client>=0.20",
+    "jsonschema>=4.23",
 ]
 
 [project.scripts]
@@ -34,6 +35,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "types-pyyaml",
+    "types-jsonschema>=4.26.0.20261006",
 ]
 
 [build-system]
@@ -58,7 +60,7 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
 
 [tool.ruff.lint.flake8-bugbear]
-extend-immutable-calls = ["fastapi.Depends", "typer.Option"]
+extend-immutable-calls = ["fastapi.Depends", "typer.Option", "typer.Argument"]
 
 [tool.mypy]
 python_version = "3.12"

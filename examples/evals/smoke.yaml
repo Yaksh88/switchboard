@@ -1,0 +1,28 @@
+# Wiring check for the gateway itself. Runs against the built-in `mock` model, which echoes
+# the last user message, so it needs no API keys and is stable enough to gate CI.
+name: smoke
+model: mock
+defaults:
+  temperature: 0
+  max_tokens: 256
+cases:
+  - id: echoes-the-prompt
+    input: "What is the capital of France?"
+    critical: true
+    assert:
+      - { type: contains, value: "capital of france" }
+      - { type: not_contains, value: "error" }
+
+  - id: follows-the-conversation
+    messages:
+      - { role: user, content: "My order number is 12345." }
+      - { role: assistant, content: "Thanks, I found it." }
+      - { role: user, content: "Cancel order 12345 please" }
+    assert:
+      - { type: regex, value: 'order \d{5}' }
+      - { type: equals, value: "echo: Cancel order 12345 please" }
+
+  - id: replies-quickly
+    input: "ping"
+    assert:
+      - { type: max_latency_ms, value: 2000 }
