@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
+from switchboard.auth.keys import Principal
 from switchboard.schemas import Usage
 
 CacheStatus = Literal["miss", "exact", "semantic", "bypass"]
@@ -20,7 +21,9 @@ class RequestContext:
     request_id: str = field(default_factory=lambda: f"req_{uuid4().hex[:20]}")
     started_at: float = field(default_factory=time.perf_counter)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    principal: Principal | None = None
     api_key_id: UUID | None = None
+    ratelimit_remaining: int | None = None
     provider: str | None = None
     upstream_model: str | None = None
     attempts: int = 0
@@ -43,4 +46,6 @@ class RequestContext:
         }
         if self.provider:
             headers["x-switchboard-provider"] = self.provider
+        if self.ratelimit_remaining is not None:
+            headers["x-ratelimit-remaining-requests"] = str(self.ratelimit_remaining)
         return headers
