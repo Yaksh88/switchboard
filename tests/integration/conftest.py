@@ -2,15 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import socket
+import threading
+import time
 from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 import redis as sync_redis_lib
+import uvicorn
 from alembic import command
 from alembic.config import Config
+from fastapi import FastAPI
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import text
@@ -148,3 +154,30 @@ def seed_log(sql: Callable[..., list[dict[str, Any]]]) -> Callable[..., None]:
         sql(f"insert into request_logs ({columns}) values ({values})", **row)
 
     return seed
+
+
+@pytest.fixture
+def serve() -> Callable[[FastAPI], AbstractContextManager[str]]:
+    """Run an app under a real uvicorn so client disconnects and the CLI behave as in production."""
+
+    @contextmanager
+    def run(app: FastAPI) -> Iterator[str]:
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        server = uvicorn.Server(
+            uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+        )
+        thread = threading.Thread(target=server.run, daemon=True)
+        thread.start()
+        deadline = time.monotonic() + 10
+        while not server.started:
+            assert time.monotonic() < deadline, "server did not start"
+            time.sleep(0.02)
+        try:
+            yield f"http://127.0.0.1:{port}"
+        finally:
+            server.should_exit = True
+            thread.join(timeout=15)
+
+    return run

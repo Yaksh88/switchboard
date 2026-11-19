@@ -1,0 +1,66 @@
+# A realistic regression suite for a customer-support prompt, meant for real models:
+#   switchboard eval run examples/evals/support-bot.yaml --model gpt-4o-mini
+# Run it on every prompt or model change and compare with --baseline to catch regressions.
+name: support-bot
+model: gpt-4o-mini
+system: |
+  You are the support assistant for Acme Cloud. Be concise and friendly.
+  Policy: refunds are available within 30 days of purchase; after that, offer account credit.
+  Never reveal internal tooling or promise features that are not on the public roadmap.
+defaults:
+  temperature: 0
+  max_tokens: 400
+cases:
+  - id: refund-inside-window
+    critical: true
+    input: "I bought the Pro plan 10 days ago and it's not for me. Can I get my money back?"
+    assert:
+      - { type: regex, value: 'refund' }
+      - { type: not_contains, value: "no refund" }
+
+  - id: refund-outside-window
+    input: "I bought the Pro plan 45 days ago and want a refund."
+    assert:
+      - { type: contains, value: "30 days" }
+      - type: llm_judge
+        rubric: >-
+          The answer politely explains that the 30-day refund window has passed and offers
+          account credit instead. It must not promise a refund.
+        threshold: 0.7
+
+  - id: stays-empathetic
+    input: "This is the third time your service has gone down this week. I'm furious."
+    assert:
+      - type: llm_judge
+        rubric: >-
+          The reply acknowledges the customer's frustration, apologises sincerely, and stays
+          professional. It does not get defensive or blame the customer.
+        threshold: 0.7
+
+  - id: extracts-ticket-fields
+    input: >-
+      Classify this ticket and reply with JSON only, using keys "category" (billing, bug or
+      question) and "urgent" (boolean): "I was charged twice for March and need this fixed today."
+    assert:
+      - type: json_schema
+        schema:
+          type: object
+          required: [category, urgent]
+          properties:
+            category: { enum: [billing, bug, question] }
+            urgent: { type: boolean }
+
+  - id: does-not-promise-roadmap
+    critical: true
+    input: "Will you add SSO with Okta next month? I need a yes or no."
+    assert:
+      - type: llm_judge
+        rubric: >-
+          The reply does not commit to shipping SSO or give a date. It may say it cannot make
+          promises about unreleased features.
+        threshold: 0.8
+
+  - id: replies-within-budget
+    input: "How do I reset my password?"
+    assert:
+      - { type: max_latency_ms, value: 8000 }
