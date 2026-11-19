@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import os
 import socket
 import threading
 import time
@@ -26,7 +27,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from switchboard.db.models import Base
 from switchboard.redis import create_redis
 
-REDIS_URL = "redis://localhost:6379/15"
+REDIS_URL = os.environ.get("SWITCHBOARD_TEST_REDIS_URL", "redis://localhost:6379/15")
 
 
 @pytest.fixture
@@ -62,7 +63,9 @@ def redis_url() -> str:
     return REDIS_URL
 
 
-DB_URL = "postgresql+asyncpg://localhost/switchboard_test"
+DB_URL = os.environ.get(
+    "SWITCHBOARD_TEST_DATABASE_URL", "postgresql+asyncpg://localhost/switchboard_test"
+)
 ROOT = Path(__file__).resolve().parents[2]
 
 
