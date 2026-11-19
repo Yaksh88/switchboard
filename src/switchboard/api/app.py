@@ -45,7 +45,7 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Settings()
     gateway_config = gateway_config or load_gateway_config(settings.config_path)
-    if settings.auth_enabled and settings.database_url is None:
+    if settings.auth_enabled and not settings.database_url:
         raise ValueError(
             "auth is enabled but no database is configured; "
             "set SWITCHBOARD_DATABASE_URL or SWITCHBOARD_AUTH_ENABLED=false"
