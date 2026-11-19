@@ -17,6 +17,17 @@ providers:
     type: mock
     latency_ms: 150
 
+# Responses to deterministic requests (temperature unset or 0) are cached in Redis.
+# Send "x-switchboard-cache: bypass" to skip the cache for a single request.
+cache:
+  enabled: true
+  ttl_s: 3600
+  semantic:
+    enabled: false      # also match near-duplicate prompts by embedding similarity
+    threshold: 0.92
+    max_entries: 1000
+    embedder: hashing   # local and free; use "openai" + embedding_provider for real embeddings
+
 # Public model aliases clients call. Each alias resolves to one or more targets.
 models:
   gpt-4o-mini:

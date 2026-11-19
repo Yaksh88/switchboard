@@ -42,7 +42,11 @@ async def chat_completions(
     body: ChatCompletionRequest, request: Request
 ) -> JSONResponse | StreamingResponse:
     gateway = _gateway(request)
-    ctx = RequestContext(model_alias=body.model, stream=body.stream)
+    ctx = RequestContext(
+        model_alias=body.model,
+        stream=body.stream,
+        bypass_cache=request.headers.get("x-switchboard-cache", "").lower() == "bypass",
+    )
     if body.stream:
         # The serving provider isn't known until a chunk arrives, after headers are sent,
         # so streams only carry the request id.
