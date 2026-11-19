@@ -15,10 +15,13 @@ class Comparison:
     fixed_cases: list[str]
     critical_failures: list[str]
 
+    def exceeds_drop(self, max_drop: float) -> bool:
+        """Whether the pass rate fell by more than ``max_drop`` (absolute, 0-1)."""
+        return self.baseline_pass_rate - self.current_pass_rate > max_drop + 1e-9
+
     def is_regression(self, max_drop: float) -> bool:
-        """A drop beyond ``max_drop`` (absolute, 0-1) or any failing critical case."""
-        drop = self.baseline_pass_rate - self.current_pass_rate
-        return drop > max_drop + 1e-9 or bool(self.critical_failures)
+        """A drop beyond ``max_drop`` or any failing critical case."""
+        return self.exceeds_drop(max_drop) or bool(self.critical_failures)
 
 
 def compare(current: RunResult, baseline: RunResult) -> Comparison:

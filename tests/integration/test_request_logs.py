@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import socket
-import threading
 import time
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import Any
 
 import httpx
 import pytest
-import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -26,6 +23,7 @@ pytestmark = pytest.mark.integration
 
 Sql = Callable[..., list[dict[str, Any]]]
 ConfigFactory = Callable[..., GatewayConfig]
+Serve = Callable[[FastAPI], AbstractContextManager[str]]
 
 PRICED_MODELS = {
     "mock": {
@@ -152,28 +150,13 @@ async def test_log_writer_drops_when_full(clean_db: str) -> None:
     await engine.dispose()
 
 
-@contextmanager
-def live_server(app: FastAPI) -> Iterator[str]:
-    """Run the app under a real uvicorn so client disconnects behave like production."""
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 10
-    while not server.started:
-        assert time.monotonic() < deadline, "server did not start"
-        time.sleep(0.02)
-    try:
-        yield f"http://127.0.0.1:{port}"
-    finally:
-        server.should_exit = True
-        thread.join(timeout=15)
-
-
 def test_stream_client_disconnect_logs_499(
-    clean_db: str, redis_url: str, config_factory: ConfigFactory, sql: Sql, sync_redis: Any
+    clean_db: str,
+    redis_url: str,
+    config_factory: ConfigFactory,
+    sql: Sql,
+    sync_redis: Any,
+    serve: Serve,
 ) -> None:
     config = config_factory(
         providers={"mock": {"type": "mock", "chunk_delay_ms": 100}},
@@ -182,7 +165,7 @@ def test_stream_client_disconnect_logs_499(
     words = " ".join(f"w{i}" for i in range(40))  # ~4s of streaming if left alone
     body = {"model": "mock", "stream": True, "messages": [{"role": "user", "content": words}]}
 
-    with live_server(app_for(clean_db, redis_url, config)) as base_url:
+    with serve(app_for(clean_db, redis_url, config)) as base_url:
         with httpx.stream("POST", f"{base_url}/v1/chat/completions", json=body) as resp:
             request_id = resp.headers["x-request-id"]
             for line in resp.iter_lines():
