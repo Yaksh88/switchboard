@@ -1,0 +1,75 @@
+/* Design tokens. Roles, not hues: components only ever reference these names. */
+:root {
+  --ground: #eef1f4;
+  --surface: #f8fafb;
+  --ink: #14202b;
+  --ink-2: #4b5b6a;
+  --rule: #cbd3db;
+  --rule-soft: #dde3e9;
+  --hover: #e4e9ee;
+
+  --signal: #0e7c86; /* healthy traffic and lit lamps */
+  --amber: #d99a00;
+  --fault: #d1432f;
+  --cable: #2f54d6; /* focus and selection only */
+
+  --signal-tint: color-mix(in srgb, var(--signal) 14%, var(--ground));
+  --amber-tint: color-mix(in srgb, var(--amber) 18%, var(--ground));
+  --fault-tint: color-mix(in srgb, var(--fault) 14%, var(--ground));
+
+  /* The patch panel is enamelled metal in both themes. */
+  --enamel: #121b23;
+  --enamel-edge: #2a3946;
+  --enamel-ink: #c5d0da;
+
+  --font: "Archivo Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-code: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-1: 1.125rem;
+  --step-2: 1.625rem;
+  --step-3: clamp(1.5rem, 1.1rem + 1.2vw, 2.125rem);
+
+  --radius-s: 3px;
+  --radius-m: 8px;
+  --rail: 224px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0d1419;
+    --surface: #131c24;
+    --ink: #e4eaf0;
+    --ink-2: #93a3b3;
+    --rule: #263544;
+    --rule-soft: #1b2733;
+    --hover: #17222c;
+
+    --signal: #3cc0cc;
+    --amber: #f2b83b;
+    --fault: #ff6b57;
+    --cable: #8aa2ff;
+
+    --enamel: #0a1015;
+    --enamel-edge: #243240;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #0d1419;
+  --surface: #131c24;
+  --ink: #e4eaf0;
+  --ink-2: #93a3b3;
+  --rule: #263544;
+  --rule-soft: #1b2733;
+  --hover: #17222c;
+
+  --signal: #3cc0cc;
+  --amber: #f2b83b;
+  --fault: #ff6b57;
+  --cable: #8aa2ff;
+
+  --enamel: #0a1015;
+  --enamel-edge: #243240;
+}
