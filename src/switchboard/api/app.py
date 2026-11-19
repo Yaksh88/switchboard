@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from switchboard import __version__
-from switchboard.api.routes import admin_keys, admin_stats, chat, health
+from switchboard.api.routes import admin_evals, admin_keys, admin_stats, chat, health
 from switchboard.auth.budget import BudgetGuard
 from switchboard.auth.keys import KeyStore
 from switchboard.config import GatewayConfig, Settings, load_gateway_config
@@ -97,6 +97,7 @@ def create_app(
     app.include_router(chat.router)
     app.include_router(admin_keys.router)
     app.include_router(admin_stats.router)
+    app.include_router(admin_evals.router)
 
     @app.get("/metrics", include_in_schema=False)
     async def prometheus_metrics(request: Request) -> Response:

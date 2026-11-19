@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -18,7 +19,7 @@ from sqlalchemy import (
     Uuid,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -68,3 +69,19 @@ class RequestLog(Base):
     completion_tokens: Mapped[int] = mapped_column(Integer)
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class EvalRun(Base):
+    """A stored eval run: summary columns for listing plus the full per-case result."""
+
+    __tablename__ = "eval_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    suite: Mapped[str] = mapped_column(String(200), index=True)
+    model: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    pass_rate: Mapped[float] = mapped_column(Float)
+    duration_s: Mapped[float] = mapped_column(Float)
+    total_cases: Mapped[int] = mapped_column(Integer)
+    passed_cases: Mapped[int] = mapped_column(Integer)
+    result: Mapped[dict[str, Any]] = mapped_column(JSONB)
