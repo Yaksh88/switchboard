@@ -36,6 +36,7 @@ class ProviderConfig(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     timeout_s: float = 60.0
+    max_retries: int = Field(default=1, ge=0, le=5)
     # Mock-only knobs, useful for demos and chaos testing.
     latency_ms: int = 0
     failure_rate: float = Field(default=0.0, ge=0, le=1)
