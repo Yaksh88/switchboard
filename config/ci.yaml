@@ -1,0 +1,13 @@
+# Minimal config for CI and local smoke runs: the mock provider only, no cache, no keys.
+providers:
+  mock:
+    type: mock
+    latency_ms: 20
+
+cache:
+  enabled: false
+
+models:
+  mock:
+    targets:
+      - { provider: mock, model: mock-1 }

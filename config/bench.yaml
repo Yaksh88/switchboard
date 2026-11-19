@@ -1,0 +1,13 @@
+# Benchmark config: a zero-latency mock provider so the numbers measure the gateway, not an LLM.
+providers:
+  mock:
+    type: mock
+
+cache:
+  enabled: true
+  ttl_s: 3600
+
+models:
+  mock:
+    targets:
+      - { provider: mock, model: mock-1 }
