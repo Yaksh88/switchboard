@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     log_level: str = "info"
+    redis_url: str = "redis://localhost:6379/0"
 
 
 class ProviderConfig(BaseModel):
@@ -53,9 +54,32 @@ class ModelConfig(BaseModel):
     targets: list[Target] = Field(min_length=1)
 
 
+class SemanticCacheConfig(BaseModel):
+    enabled: bool = False
+    threshold: float = Field(default=0.92, gt=0, le=1)
+    max_entries: int = Field(default=1000, gt=0)
+    embedder: Literal["hashing", "openai"] = "hashing"
+    # Provider (type: openai) used to compute embeddings when embedder is "openai".
+    embedding_provider: str | None = None
+    embedding_model: str = "text-embedding-3-small"
+
+    @model_validator(mode="after")
+    def _openai_embedder_needs_provider(self) -> SemanticCacheConfig:
+        if self.embedder == "openai" and not self.embedding_provider:
+            raise ValueError("embedding_provider is required when embedder is 'openai'")
+        return self
+
+
+class CacheConfig(BaseModel):
+    enabled: bool = True
+    ttl_s: int = Field(default=3600, gt=0)
+    semantic: SemanticCacheConfig = SemanticCacheConfig()
+
+
 class GatewayConfig(BaseModel):
     providers: dict[str, ProviderConfig]
     models: dict[str, ModelConfig]
+    cache: CacheConfig = CacheConfig()
 
     @model_validator(mode="after")
     def _targets_reference_known_providers(self) -> GatewayConfig:
