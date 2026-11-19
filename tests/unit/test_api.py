@@ -51,3 +51,14 @@ def test_validation_errors_are_400(client: TestClient) -> None:
 
 def test_models_endpoint_lists_aliases(client: TestClient) -> None:
     assert [m["id"] for m in client.get("/v1/models").json()["data"]] == ["mock"]
+
+
+def test_response_includes_routing_headers(client: TestClient) -> None:
+    resp = client.post(
+        "/v1/chat/completions",
+        json={"model": "mock", "messages": [{"role": "user", "content": "ping"}]},
+    )
+    assert resp.headers["x-request-id"].startswith("req_")
+    assert resp.headers["x-switchboard-provider"] == "mock"
+    assert resp.headers["x-switchboard-cache"] == "bypass"
+    assert resp.headers["x-switchboard-attempts"] == "1"
