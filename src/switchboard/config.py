@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     port: int = 8080
     log_level: str = "info"
     redis_url: str = "redis://localhost:6379/0"
+    # ``None`` runs the gateway without Postgres: no virtual keys, admin API or request logs.
+    database_url: str | None = "postgresql+asyncpg://localhost/switchboard"
+    auth_enabled: bool = True
+    admin_token: str | None = None
 
 
 class ProviderConfig(BaseModel):
