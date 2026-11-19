@@ -1,0 +1,41 @@
+name: Evals
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Smoke eval
+    runs-on: ubuntu-latest
+    env:
+      SWITCHBOARD_CONFIG_PATH: config/ci.yaml
+      SWITCHBOARD_AUTH_ENABLED: "false"
+      SWITCHBOARD_DATABASE_URL: ""
+      SWITCHBOARD_PORT: "8080"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --no-dev
+      - name: Start the gateway
+        run: |
+          uv run switchboard serve > gateway.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:8080/healthz && exit 0
+            sleep 1
+          done
+          cat gateway.log
+          exit 1
+      - name: Run the smoke suite
+        run: >-
+          uv run switchboard eval run examples/evals/smoke.yaml
+          --min-pass-rate 1.0
+          --summary-md "$GITHUB_STEP_SUMMARY"
+      - name: Stop the gateway
+        if: always()
+        # A background server would otherwise keep the job's post-steps from finishing.
+        run: pkill -f "switchboard serve" || true

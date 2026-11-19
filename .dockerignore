@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.env
+config/switchboard.yaml
+dashboard/node_modules
+dashboard/dist
+tests
+benchmarks
+docs
+eval-results

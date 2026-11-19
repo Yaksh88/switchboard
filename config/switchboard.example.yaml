@@ -1,0 +1,50 @@
+# Switchboard gateway configuration.
+# ${VAR} and ${VAR:-default} are expanded from the environment at startup.
+
+providers:
+  openai:
+    type: openai
+    api_key: ${OPENAI_API_KEY}
+  anthropic:
+    type: anthropic
+    api_key: ${ANTHROPIC_API_KEY}
+  # Any OpenAI-compatible server works with type: openai, e.g. a local Ollama.
+  ollama:
+    type: openai
+    base_url: ${OLLAMA_BASE_URL:-http://localhost:11434/v1}
+  # In-process fake provider: no keys needed, handy for local dev and demos.
+  mock:
+    type: mock
+    latency_ms: 150
+
+# Responses to deterministic requests (temperature unset or 0) are cached in Redis.
+# Send "x-switchboard-cache: bypass" to skip the cache for a single request.
+cache:
+  enabled: true
+  ttl_s: 3600
+  semantic:
+    enabled: false      # also match near-duplicate prompts by embedding similarity
+    threshold: 0.92
+    max_entries: 1000
+    embedder: hashing   # local and free; use "openai" + embedding_provider for real embeddings
+
+# Public model aliases clients call. Prices are USD per million tokens (cost tracking, budgets). Each alias resolves to one or more targets.
+models:
+  gpt-4o-mini:
+    targets:
+      - { provider: openai, model: gpt-4o-mini, input_cost_per_mtok: 0.15, output_cost_per_mtok: 0.60 }
+  claude-haiku:
+    targets:
+      - { provider: anthropic, model: claude-haiku-4-5, input_cost_per_mtok: 1.00, output_cost_per_mtok: 5.00 }
+  llama3:
+    targets:
+      - { provider: ollama, model: llama3.1 }
+  mock:
+    targets:
+      - { provider: mock, model: mock-1 }
+  # Tries Anthropic first, then OpenAI, then the mock, skipping any target whose circuit is open.
+  resilient:
+    targets:
+      - { provider: anthropic, model: claude-haiku-4-5, input_cost_per_mtok: 1.00, output_cost_per_mtok: 5.00 }
+      - { provider: openai, model: gpt-4o-mini, input_cost_per_mtok: 0.15, output_cost_per_mtok: 0.60 }
+      - { provider: mock, model: mock-1 }

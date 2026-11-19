@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+import asyncio
+import json
+from collections.abc import AsyncIterator
+from typing import Any
+
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+
+from switchboard.auth.dependencies import require_principal
+from switchboard.auth.keys import Principal
+from switchboard.context import RequestContext
+from switchboard.errors import GatewayError
+from switchboard.gateway import Gateway
+from switchboard.schemas import ChatCompletionRequest
+
+router = APIRouter(prefix="/v1", tags=["chat"])
+
+
+def _gateway(request: Request) -> Gateway:
+    gateway: Gateway = request.app.state.gateway
+    return gateway
+
+
+def _sse(data: str) -> str:
+    return f"data: {data}\n\n"
+
+
+def _record_failure(ctx: RequestContext, exc: Exception) -> None:
+    ctx.status_code = exc.status_code if isinstance(exc, GatewayError) else 500
+    ctx.error = exc.message if isinstance(exc, GatewayError) else f"{type(exc).__name__}: {exc}"
+
+
+async def _event_stream(
+    gateway: Gateway, req: ChatCompletionRequest, ctx: RequestContext
+) -> AsyncIterator[str]:
+    try:
+        async for chunk in gateway.stream(req, ctx):
+            yield _sse(chunk.model_dump_json(exclude_none=True))
+    except GatewayError as exc:
+        # Headers are already sent, so the status code can't change; surface the error
+        # in-band the same way OpenAI does.
+        _record_failure(ctx, exc)
+        yield _sse(json.dumps({"error": {"message": exc.message, "type": exc.error_type}}))
+    except (asyncio.CancelledError, GeneratorExit):
+        # The client went away mid-stream (nginx's non-standard 499).
+        ctx.status_code = 499
+        ctx.error = "client disconnected"
+        raise
+    except Exception as exc:
+        _record_failure(ctx, exc)
+        raise
+    finally:
+        gateway.finish(ctx)
+    yield _sse("[DONE]")
+
+
+@router.post("/chat/completions", response_model=None)
+async def chat_completions(
+    body: ChatCompletionRequest,
+    request: Request,
+    principal: Principal | None = Depends(require_principal),
+) -> JSONResponse | StreamingResponse:
+    gateway = _gateway(request)
+    ctx = RequestContext(
+        model_alias=body.model,
+        stream=body.stream,
+        bypass_cache=request.headers.get("x-switchboard-cache", "").lower() == "bypass",
+        principal=principal,
+        api_key_id=principal.key_id if principal else None,
+    )
+    try:
+        await gateway.admit(body, ctx)
+        if body.stream:
+            # The serving provider isn't known until a chunk arrives, after headers are sent,
+            # so streams only carry the request id. The stream generator calls finish().
+            return StreamingResponse(
+                _event_stream(gateway, body, ctx),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                    "x-request-id": ctx.request_id,
+                },
+            )
+        response = await gateway.complete(body, ctx)
+    except Exception as exc:
+        _record_failure(ctx, exc)
+        gateway.finish(ctx)
+        raise
+    gateway.finish(ctx)
+    return JSONResponse(response.model_dump(), headers=ctx.headers())
+
+
+@router.get("/models", dependencies=[Depends(require_principal)])
+async def list_models(request: Request) -> dict[str, Any]:
+    return {
+        "object": "list",
+        "data": [
+            {"id": m, "object": "model", "owned_by": "switchboard"}
+            for m in _gateway(request).models()
+        ],
+    }
