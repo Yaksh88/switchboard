@@ -69,7 +69,7 @@ jobs:
         working-directory: dashboard
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4 # version comes from dashboard/package.json
+      - uses: pnpm/action-setup@v6 # version comes from dashboard/package.json
         with:
           package_json_file: dashboard/package.json
       - uses: actions/setup-node@v4
