@@ -7,7 +7,9 @@ from collections.abc import AsyncIterator
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
+from sqlalchemy.exc import SQLAlchemyError
 
+from switchboard.auth.budget import BudgetGuard
 from switchboard.cache.embeddings import Embedder, HashingEmbedder, OpenAIEmbedder
 from switchboard.cache.exact import ExactCache
 from switchboard.cache.keys import is_cacheable
@@ -16,6 +18,10 @@ from switchboard.cache.semantic import SemanticCache
 from switchboard.config import GatewayConfig
 from switchboard.context import RequestContext
 from switchboard.errors import GatewayError, PermissionDeniedError, RateLimitError
+from switchboard.observability import metrics
+from switchboard.observability.cost import compute_cost
+from switchboard.observability.log_writer import LogWriter
+from switchboard.observability.logging import log_request
 from switchboard.providers import Provider, build_provider
 from switchboard.providers.base import HttpProvider
 from switchboard.ratelimit.limiter import RateLimiter
@@ -35,8 +41,17 @@ log = logging.getLogger("switchboard.gateway")
 
 
 class Gateway:
-    def __init__(self, config: GatewayConfig, redis: Redis | None = None) -> None:
+    def __init__(
+        self,
+        config: GatewayConfig,
+        redis: Redis | None = None,
+        *,
+        log_writer: LogWriter | None = None,
+        budget: BudgetGuard | None = None,
+    ) -> None:
         self.config = config
+        self.log_writer = log_writer
+        self.budget = budget
         self.providers: dict[str, Provider] = {
             name: build_provider(name, cfg) for name, cfg in config.providers.items()
         }
@@ -85,6 +100,11 @@ class Gateway:
             return
         if principal.allowed_models is not None and req.model not in principal.allowed_models:
             raise PermissionDeniedError(f"This API key may not use model '{req.model}'")
+        if self.budget is not None:
+            try:
+                await self.budget.check(principal)
+            except (SQLAlchemyError, OSError):
+                log.warning("budget check unavailable; admitting request", exc_info=True)
         if self.limiter is None:
             return
 
@@ -132,6 +152,36 @@ class Gateway:
             )
         except (RedisError, OSError):
             log.warning("rate limiter unavailable; skipping token debit", exc_info=True)
+
+    def finish(self, ctx: RequestContext) -> None:
+        """Account for a finished request: cost, metrics, access log and the request log row.
+
+        Synchronous and non-blocking so it is safe to call from a ``finally`` while a
+        cancelled stream unwinds.
+        """
+        ctx.cost_usd = self._cost(ctx)
+        targets = (
+            self.config.models[ctx.model_alias].targets
+            if ctx.model_alias in self.config.models
+            else []
+        )
+        if targets and ctx.provider not in (None, "cache") and ctx.provider != targets[0].provider:
+            metrics.FALLBACKS.labels(ctx.model_alias).inc()
+        metrics.record(ctx)
+        log_request(ctx)
+        if self.log_writer is not None:
+            self.log_writer.submit(ctx)
+
+    def _cost(self, ctx: RequestContext) -> float:
+        if ctx.usage is None or ctx.cache in ("exact", "semantic"):
+            return 0.0
+        model = self.config.models.get(ctx.model_alias)
+        if model is None:
+            return 0.0
+        for target in model.targets:
+            if target.provider == ctx.provider and target.model == ctx.upstream_model:
+                return compute_cost(ctx.usage, target)
+        return 0.0
 
     async def _lookup(
         self, req: ChatCompletionRequest, ctx: RequestContext
@@ -190,6 +240,7 @@ class Gateway:
     ) -> AsyncIterator[ChatCompletionChunk]:
         if (hit := await self._lookup(req, ctx)) is not None:
             async for chunk in replay_as_chunks(self._serve_hit(hit, req, ctx)):
+                self._mark_first_token(chunk, ctx)
                 yield chunk
             await self._settle(ctx)
             return
@@ -199,6 +250,7 @@ class Gateway:
         finish: FinishReason | None = None
         async for chunk in self.router.stream(req, ctx):
             chunk.model = req.model
+            self._mark_first_token(chunk, ctx)
             for choice in chunk.choices:
                 parts.append(choice.delta.content or "")
                 finish = choice.finish_reason or finish
@@ -222,6 +274,11 @@ class Gateway:
             ),
             ctx,
         )
+
+    @staticmethod
+    def _mark_first_token(chunk: ChatCompletionChunk, ctx: RequestContext) -> None:
+        if ctx.ttft_ms is None and any(c.delta.content for c in chunk.choices):
+            ctx.ttft_ms = ctx.elapsed_ms()
 
     async def aclose(self) -> None:
         for provider in self.providers.values():

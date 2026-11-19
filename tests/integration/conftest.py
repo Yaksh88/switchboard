@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Iterator
+import itertools
+from collections.abc import AsyncIterator, Callable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 import redis as sync_redis_lib
@@ -94,3 +97,54 @@ def clean_db(db_url: str) -> str:
 
     asyncio.run(truncate())
     return db_url
+
+
+@pytest.fixture
+def sql(clean_db: str) -> Callable[..., list[dict[str, Any]]]:
+    """Run SQL against the test database from a synchronous test."""
+
+    def run(statement: str, **params: Any) -> list[dict[str, Any]]:
+        async def go() -> list[dict[str, Any]]:
+            engine = create_async_engine(clean_db)
+            try:
+                async with engine.begin() as conn:
+                    result = await conn.execute(text(statement), params)
+                    return [dict(r) for r in result.mappings().all()] if result.returns_rows else []
+            finally:
+                await engine.dispose()
+
+        return asyncio.run(go())
+
+    return run
+
+
+@pytest.fixture
+def seed_log(sql: Callable[..., list[dict[str, Any]]]) -> Callable[..., None]:
+    """Insert one request_logs row; override any column by keyword."""
+    counter = itertools.count(1)
+
+    def seed(**overrides: Any) -> None:
+        row: dict[str, Any] = {
+            "request_id": f"req_seed{next(counter):04d}",
+            "created_at": datetime.now(UTC),
+            "api_key_id": None,
+            "model_alias": "mock",
+            "provider": "mock",
+            "upstream_model": "mock-1",
+            "status_code": 200,
+            "cache": "miss",
+            "attempts": 1,
+            "stream": False,
+            "latency_ms": 100.0,
+            "ttft_ms": None,
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "cost_usd": 0,
+            "error": None,
+            **overrides,
+        }
+        columns = ", ".join(row)
+        values = ", ".join(f":{name}" for name in row)
+        sql(f"insert into request_logs ({columns}) values ({values})", **row)
+
+    return seed

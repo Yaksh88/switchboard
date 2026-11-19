@@ -44,6 +44,7 @@ class ProviderConfig(BaseModel):
     max_retries: int = Field(default=1, ge=0, le=5)
     # Mock-only knobs, useful for demos and chaos testing.
     latency_ms: int = 0
+    chunk_delay_ms: int = 0
     failure_rate: float = Field(default=0.0, ge=0, le=1)
 
 
@@ -52,6 +53,9 @@ class Target(BaseModel):
 
     provider: str
     model: str
+    # USD per million tokens, used for cost tracking and budgets.
+    input_cost_per_mtok: float = Field(default=0.0, ge=0)
+    output_cost_per_mtok: float = Field(default=0.0, ge=0)
 
 
 class ModelConfig(BaseModel):

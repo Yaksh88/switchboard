@@ -7,15 +7,20 @@ from math import ceil
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from switchboard import __version__
-from switchboard.api.routes import admin_keys, chat, health
+from switchboard.api.routes import admin_keys, admin_stats, chat, health
+from switchboard.auth.budget import BudgetGuard
 from switchboard.auth.keys import KeyStore
 from switchboard.config import GatewayConfig, Settings, load_gateway_config
 from switchboard.db.engine import create_engine, session_factory
 from switchboard.errors import GatewayError, RateLimitError
 from switchboard.gateway import Gateway
+from switchboard.observability import metrics
+from switchboard.observability.log_writer import LogWriter
+from switchboard.observability.logging import configure_logging
 from switchboard.redis import create_redis
 from switchboard.schemas import ErrorBody, ErrorResponse
 
@@ -46,14 +51,27 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        configure_logging(settings.log_level)
         engine = create_engine(settings.database_url) if settings.database_url else None
-        app.state.key_store = KeyStore(session_factory(engine)) if engine else None
+        sessions = session_factory(engine) if engine else None
+        app.state.sessions = sessions
+        app.state.key_store = KeyStore(sessions) if sessions else None
+        log_writer = LogWriter(sessions) if sessions else None
+        if log_writer is not None:
+            await log_writer.start()
         redis = create_redis(settings.redis_url)
-        app.state.gateway = Gateway(gateway_config, redis)
+        app.state.gateway = Gateway(
+            gateway_config,
+            redis,
+            log_writer=log_writer,
+            budget=BudgetGuard(sessions) if sessions else None,
+        )
         log.info("switchboard started with models: %s", ", ".join(app.state.gateway.models()))
         yield
         await app.state.gateway.aclose()
         await redis.aclose()
+        if log_writer is not None:
+            await log_writer.close()
         if engine is not None:
             await engine.dispose()
 
@@ -78,4 +96,14 @@ def create_app(
     app.include_router(health.router)
     app.include_router(chat.router)
     app.include_router(admin_keys.router)
+    app.include_router(admin_stats.router)
+
+    @app.get("/metrics", include_in_schema=False)
+    async def prometheus_metrics(request: Request) -> Response:
+        for entry in request.app.state.gateway.health():
+            metrics.BREAKER_OPEN.labels(entry["provider"], entry["model"]).set(
+                0 if entry["state"] == "closed" else 1
+            )
+        return Response(generate_latest(metrics.REGISTRY), media_type=CONTENT_TYPE_LATEST)
+
     return app

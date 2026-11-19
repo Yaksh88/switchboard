@@ -24,6 +24,11 @@ def make_config(**overrides: Any) -> GatewayConfig:
 
 
 @pytest.fixture
+def config_factory() -> Callable[..., GatewayConfig]:
+    return make_config
+
+
+@pytest.fixture
 def gateway_config() -> GatewayConfig:
     return make_config()
 
