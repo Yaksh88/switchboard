@@ -1,0 +1,33 @@
+# Switchboard gateway configuration.
+# ${VAR} and ${VAR:-default} are expanded from the environment at startup.
+
+providers:
+  openai:
+    type: openai
+    api_key: ${OPENAI_API_KEY}
+  anthropic:
+    type: anthropic
+    api_key: ${ANTHROPIC_API_KEY}
+  # Any OpenAI-compatible server works with type: openai, e.g. a local Ollama.
+  ollama:
+    type: openai
+    base_url: ${OLLAMA_BASE_URL:-http://localhost:11434/v1}
+  # In-process fake provider: no keys needed, handy for local dev and demos.
+  mock:
+    type: mock
+    latency_ms: 150
+
+# Public model aliases clients call. Each alias resolves to one or more targets.
+models:
+  gpt-4o-mini:
+    targets:
+      - { provider: openai, model: gpt-4o-mini }
+  claude-haiku:
+    targets:
+      - { provider: anthropic, model: claude-haiku-4-5 }
+  llama3:
+    targets:
+      - { provider: ollama, model: llama3.1 }
+  mock:
+    targets:
+      - { provider: mock, model: mock-1 }
