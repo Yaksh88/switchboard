@@ -57,6 +57,8 @@ class MockProvider(Provider):
             id=chunk_id, model=model, choices=[ChunkChoice(delta=Delta(role="assistant"))]
         )
         for word in text.split(" "):
+            if self.config.chunk_delay_ms:
+                await asyncio.sleep(self.config.chunk_delay_ms / 1000)
             yield ChatCompletionChunk(
                 id=chunk_id, model=model, choices=[ChunkChoice(delta=Delta(content=word + " "))]
             )
