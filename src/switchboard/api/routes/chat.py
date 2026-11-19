@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Any
@@ -26,6 +27,11 @@ def _sse(data: str) -> str:
     return f"data: {data}\n\n"
 
 
+def _record_failure(ctx: RequestContext, exc: Exception) -> None:
+    ctx.status_code = exc.status_code if isinstance(exc, GatewayError) else 500
+    ctx.error = exc.message if isinstance(exc, GatewayError) else f"{type(exc).__name__}: {exc}"
+
+
 async def _event_stream(
     gateway: Gateway, req: ChatCompletionRequest, ctx: RequestContext
 ) -> AsyncIterator[str]:
@@ -35,7 +41,18 @@ async def _event_stream(
     except GatewayError as exc:
         # Headers are already sent, so the status code can't change; surface the error
         # in-band the same way OpenAI does.
+        _record_failure(ctx, exc)
         yield _sse(json.dumps({"error": {"message": exc.message, "type": exc.error_type}}))
+    except (asyncio.CancelledError, GeneratorExit):
+        # The client went away mid-stream (nginx's non-standard 499).
+        ctx.status_code = 499
+        ctx.error = "client disconnected"
+        raise
+    except Exception as exc:
+        _record_failure(ctx, exc)
+        raise
+    finally:
+        gateway.finish(ctx)
     yield _sse("[DONE]")
 
 
@@ -53,20 +70,26 @@ async def chat_completions(
         principal=principal,
         api_key_id=principal.key_id if principal else None,
     )
-    await gateway.admit(body, ctx)
-    if body.stream:
-        # The serving provider isn't known until a chunk arrives, after headers are sent,
-        # so streams only carry the request id.
-        return StreamingResponse(
-            _event_stream(gateway, body, ctx),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                "x-request-id": ctx.request_id,
-            },
-        )
-    response = await gateway.complete(body, ctx)
+    try:
+        await gateway.admit(body, ctx)
+        if body.stream:
+            # The serving provider isn't known until a chunk arrives, after headers are sent,
+            # so streams only carry the request id. The stream generator calls finish().
+            return StreamingResponse(
+                _event_stream(gateway, body, ctx),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                    "x-request-id": ctx.request_id,
+                },
+            )
+        response = await gateway.complete(body, ctx)
+    except Exception as exc:
+        _record_failure(ctx, exc)
+        gateway.finish(ctx)
+        raise
+    gateway.finish(ctx)
     return JSONResponse(response.model_dump(), headers=ctx.headers())
 
 
