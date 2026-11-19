@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from pathlib import Path
 
 from fastapi.testclient import TestClient
+
+from switchboard.config import Settings
 
 
 def test_chat_completion_returns_openai_shape_with_alias(client: TestClient) -> None:
@@ -86,3 +89,29 @@ def test_response_reports_cost_of_the_request(make_client: Callable[..., TestCli
     )
     prompt_tokens = resp.json()["usage"]["prompt_tokens"]
     assert float(resp.headers["x-switchboard-cost-usd"]) == prompt_tokens
+
+
+def dashboard_client(make_client: Callable[..., TestClient], directory: Path) -> TestClient:
+    return make_client(Settings(database_url=None, auth_enabled=False, dashboard_dir=directory))
+
+
+def test_dashboard_is_served_when_built(
+    make_client: Callable[..., TestClient], tmp_path: Path
+) -> None:
+    (tmp_path / "index.html").write_text("<title>Switchboard dashboard</title>")
+    (tmp_path / "app.js").write_text("console.log('hi')")
+    client = dashboard_client(make_client, tmp_path)
+
+    page = client.get("/dashboard/")
+    assert page.status_code == 200 and "Switchboard dashboard" in page.text
+    assert client.get("/dashboard/app.js").status_code == 200
+
+    root = client.get("/", follow_redirects=False)
+    assert root.status_code == 307 and root.headers["location"] == "/dashboard/"
+
+
+def test_dashboard_absent_is_404(make_client: Callable[..., TestClient], tmp_path: Path) -> None:
+    client = dashboard_client(make_client, tmp_path / "not-built")
+    assert client.get("/dashboard/").status_code == 404
+    assert client.get("/").status_code == 404
+    assert client.get("/healthz").status_code == 200
