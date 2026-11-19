@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from switchboard.api.app import create_app
 from switchboard.config import GatewayConfig, Settings
 
+NO_DB = {"database_url": None, "auth_enabled": False}
+
 
 def make_config(**overrides: Any) -> GatewayConfig:
     raw: dict[str, Any] = {
@@ -28,7 +30,7 @@ def gateway_config() -> GatewayConfig:
 
 @pytest.fixture
 def client(gateway_config: GatewayConfig) -> Iterator[TestClient]:
-    app = create_app(Settings(), gateway_config)
+    app = create_app(Settings(**NO_DB), gateway_config)
     with TestClient(app) as c:
         yield c
 
@@ -39,7 +41,7 @@ def make_client() -> Iterator[Callable[..., TestClient]]:
     opened: list[TestClient] = []
 
     def factory(settings: Settings | None = None, **overrides: Any) -> TestClient:
-        app = create_app(settings or Settings(), make_config(**overrides))
+        app = create_app(settings or Settings(**NO_DB), make_config(**overrides))
         test_client = TestClient(app)
         test_client.__enter__()
         opened.append(test_client)

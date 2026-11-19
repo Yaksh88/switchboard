@@ -4,9 +4,11 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from switchboard.auth.dependencies import require_principal
+from switchboard.auth.keys import Principal
 from switchboard.context import RequestContext
 from switchboard.errors import GatewayError
 from switchboard.gateway import Gateway
@@ -39,14 +41,19 @@ async def _event_stream(
 
 @router.post("/chat/completions", response_model=None)
 async def chat_completions(
-    body: ChatCompletionRequest, request: Request
+    body: ChatCompletionRequest,
+    request: Request,
+    principal: Principal | None = Depends(require_principal),
 ) -> JSONResponse | StreamingResponse:
     gateway = _gateway(request)
     ctx = RequestContext(
         model_alias=body.model,
         stream=body.stream,
         bypass_cache=request.headers.get("x-switchboard-cache", "").lower() == "bypass",
+        principal=principal,
+        api_key_id=principal.key_id if principal else None,
     )
+    await gateway.admit(body, ctx)
     if body.stream:
         # The serving provider isn't known until a chunk arrives, after headers are sent,
         # so streams only carry the request id.
@@ -63,7 +70,7 @@ async def chat_completions(
     return JSONResponse(response.model_dump(), headers=ctx.headers())
 
 
-@router.get("/models")
+@router.get("/models", dependencies=[Depends(require_principal)])
 async def list_models(request: Request) -> dict[str, Any]:
     return {
         "object": "list",

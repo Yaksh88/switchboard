@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
-switchboard = "switchboard.__main__:main"
+switchboard = "switchboard.cli:app"
 
 [dependency-groups]
 dev = [
@@ -55,6 +55,9 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "typer.Option"]
 
 [tool.mypy]
 python_version = "3.12"

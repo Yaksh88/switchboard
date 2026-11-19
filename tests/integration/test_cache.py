@@ -23,6 +23,8 @@ from switchboard.schemas import (
 
 pytestmark = pytest.mark.integration
 
+NO_AUTH = {"database_url": None, "auth_enabled": False}
+
 ClientFactory = Callable[..., TestClient]
 
 
@@ -51,7 +53,7 @@ def chat(client: TestClient, text: str, **extra: Any) -> Any:
 
 
 def cached_client(make_client: ClientFactory, redis_url: str, **cache: Any) -> TestClient:
-    return make_client(Settings(redis_url=redis_url), cache={"enabled": True, **cache})
+    return make_client(Settings(redis_url=redis_url, **NO_AUTH), cache={"enabled": True, **cache})
 
 
 async def test_exact_cache_round_trip_and_ttl(redis_client: Redis) -> None:
@@ -171,7 +173,7 @@ def test_errors_are_not_cached(
     make_client: ClientFactory, redis_url: str, sync_redis: SyncRedis
 ) -> None:
     client = make_client(
-        Settings(redis_url=redis_url),
+        Settings(redis_url=redis_url, **NO_AUTH),
         providers={"mock": {"type": "mock", "failure_rate": 1.0, "max_retries": 0}},
         cache={"enabled": True},
     )
@@ -192,7 +194,9 @@ def test_bypass_header_skips_cache(
 
 
 def test_redis_outage_degrades_to_uncached_requests(make_client: ClientFactory) -> None:
-    client = make_client(Settings(redis_url="redis://localhost:1/0"), cache={"enabled": True})
+    client = make_client(
+        Settings(redis_url="redis://localhost:1/0", **NO_AUTH), cache={"enabled": True}
+    )
     resp = chat(client, "ping")
     assert resp.status_code == 200
     assert resp.json()["choices"][0]["message"]["content"] == "echo: ping"
