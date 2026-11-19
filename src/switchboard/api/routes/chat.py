@@ -5,11 +5,12 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
+from switchboard.context import RequestContext
 from switchboard.errors import GatewayError
 from switchboard.gateway import Gateway
-from switchboard.schemas import ChatCompletionRequest, ChatCompletionResponse
+from switchboard.schemas import ChatCompletionRequest
 
 router = APIRouter(prefix="/v1", tags=["chat"])
 
@@ -23,9 +24,11 @@ def _sse(data: str) -> str:
     return f"data: {data}\n\n"
 
 
-async def _event_stream(gateway: Gateway, req: ChatCompletionRequest) -> AsyncIterator[str]:
+async def _event_stream(
+    gateway: Gateway, req: ChatCompletionRequest, ctx: RequestContext
+) -> AsyncIterator[str]:
     try:
-        async for chunk in gateway.stream(req):
+        async for chunk in gateway.stream(req, ctx):
             yield _sse(chunk.model_dump_json(exclude_none=True))
     except GatewayError as exc:
         # Headers are already sent, so the status code can't change; surface the error
@@ -37,15 +40,23 @@ async def _event_stream(gateway: Gateway, req: ChatCompletionRequest) -> AsyncIt
 @router.post("/chat/completions", response_model=None)
 async def chat_completions(
     body: ChatCompletionRequest, request: Request
-) -> ChatCompletionResponse | StreamingResponse:
+) -> JSONResponse | StreamingResponse:
     gateway = _gateway(request)
+    ctx = RequestContext(model_alias=body.model, stream=body.stream)
     if body.stream:
+        # The serving provider isn't known until a chunk arrives, after headers are sent,
+        # so streams only carry the request id.
         return StreamingResponse(
-            _event_stream(gateway, body),
+            _event_stream(gateway, body, ctx),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "x-request-id": ctx.request_id,
+            },
         )
-    return await gateway.complete(body)
+    response = await gateway.complete(body, ctx)
+    return JSONResponse(response.model_dump(), headers=ctx.headers())
 
 
 @router.get("/models")

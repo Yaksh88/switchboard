@@ -31,3 +31,9 @@ models:
   mock:
     targets:
       - { provider: mock, model: mock-1 }
+  # Tries Anthropic first, then OpenAI, then the mock, skipping any target whose circuit is open.
+  resilient:
+    targets:
+      - { provider: anthropic, model: claude-haiku-4-5 }
+      - { provider: openai, model: gpt-4o-mini }
+      - { provider: mock, model: mock-1 }
