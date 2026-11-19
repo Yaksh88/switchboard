@@ -104,8 +104,11 @@ def test_auth_disabled_allows_anonymous_requests(
     assert chat(client, None).status_code == 200
 
 
-def test_enabling_auth_without_a_database_is_a_startup_error(gateway_config: Any) -> None:
+@pytest.mark.parametrize("database_url", [None, ""])
+def test_enabling_auth_without_a_database_is_a_startup_error(
+    gateway_config: Any, database_url: str | None
+) -> None:
     from switchboard.api.app import create_app
 
     with pytest.raises(ValueError, match="no database"):
-        create_app(Settings(database_url=None, auth_enabled=True), gateway_config)
+        create_app(Settings(database_url=database_url, auth_enabled=True), gateway_config)
