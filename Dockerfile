@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # --- Build the admin dashboard -------------------------------------------------------------
-FROM node:22-alpine AS dashboard
+FROM node:26-alpine AS dashboard
 WORKDIR /dashboard
 RUN corepack enable
 COPY dashboard/package.json dashboard/pnpm-lock.yaml ./
