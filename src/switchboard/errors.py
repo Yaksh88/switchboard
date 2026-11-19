@@ -23,6 +23,43 @@ class InvalidRequestError(GatewayError):
     error_type = "invalid_request_error"
 
 
+class AuthenticationError(GatewayError):
+    status_code = 401
+    error_type = "authentication_error"
+
+
+class PermissionDeniedError(GatewayError):
+    status_code = 403
+    error_type = "permission_error"
+
+
+class NotFoundError(GatewayError):
+    status_code = 404
+    error_type = "invalid_request_error"
+
+
+class AdminUnavailableError(GatewayError):
+    status_code = 503
+    error_type = "server_error"
+
+
+class RateLimitError(GatewayError):
+    status_code = 429
+    error_type = "rate_limit_error"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after_s: float,
+        code: str = "rate_limit_exceeded",
+        remaining: int | None = None,
+    ) -> None:
+        super().__init__(message, code=code)
+        self.retry_after_s = retry_after_s
+        self.remaining = remaining
+
+
 class ModelNotFoundError(GatewayError):
     status_code = 404
     error_type = "invalid_request_error"
