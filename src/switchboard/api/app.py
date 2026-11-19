@@ -4,10 +4,12 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from math import ceil
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from switchboard import __version__
@@ -106,5 +108,14 @@ def create_app(
                 0 if entry["state"] == "closed" else 1
             )
         return Response(generate_latest(metrics.REGISTRY), media_type=CONTENT_TYPE_LATEST)
+
+    dashboard_dir = Path(settings.dashboard_dir)
+    if (dashboard_dir / "index.html").is_file():
+        # The app uses hash routing, so every deep link resolves to this one static page.
+        app.mount("/dashboard", StaticFiles(directory=dashboard_dir, html=True), name="dashboard")
+
+        @app.get("/", include_in_schema=False)
+        async def root() -> RedirectResponse:
+            return RedirectResponse("/dashboard/")
 
     return app

@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     database_url: str | None = "postgresql+asyncpg://localhost/switchboard"
     auth_enabled: bool = True
     admin_token: str | None = None
+    # Built dashboard (``pnpm build`` in dashboard/); served at /dashboard/ when it exists.
+    dashboard_dir: Path = Path("dashboard/dist")
 
 
 class ProviderConfig(BaseModel):
