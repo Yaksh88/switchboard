@@ -4,7 +4,20 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Numeric, String, Text, Uuid, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    Uuid,
+    func,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -28,3 +41,30 @@ class ApiKey(Base):
     allowed_models: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RequestLog(Base):
+    """One row per gateway request, written asynchronously in batches."""
+
+    __tablename__ = "request_logs"
+    __table_args__ = (Index("ix_request_logs_api_key_id_created_at", "api_key_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    request_id: Mapped[str] = mapped_column(String(32), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    api_key_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("api_keys.id", ondelete="SET NULL"), index=True
+    )
+    model_alias: Mapped[str] = mapped_column(String(100), index=True)
+    provider: Mapped[str | None] = mapped_column(String(100))
+    upstream_model: Mapped[str | None] = mapped_column(String(100))
+    status_code: Mapped[int] = mapped_column(Integer)
+    cache: Mapped[str] = mapped_column(String(10))
+    attempts: Mapped[int] = mapped_column(Integer)
+    stream: Mapped[bool] = mapped_column(Boolean)
+    latency_ms: Mapped[float] = mapped_column(Float)
+    ttft_ms: Mapped[float | None] = mapped_column(Float)
+    prompt_tokens: Mapped[int] = mapped_column(Integer)
+    completion_tokens: Mapped[int] = mapped_column(Integer)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6))
+    error: Mapped[str | None] = mapped_column(Text)
