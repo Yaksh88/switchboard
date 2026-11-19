@@ -46,6 +46,8 @@ class RequestContext:
         }
         if self.provider:
             headers["x-switchboard-provider"] = self.provider
+        if self.usage is not None:
+            headers["x-switchboard-cost-usd"] = f"{self.cost_usd:.6f}"
         if self.ratelimit_remaining is not None:
             headers["x-ratelimit-remaining-requests"] = str(self.ratelimit_remaining)
         return headers

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 
 from fastapi.testclient import TestClient
 
@@ -62,3 +63,26 @@ def test_response_includes_routing_headers(client: TestClient) -> None:
     assert resp.headers["x-switchboard-provider"] == "mock"
     assert resp.headers["x-switchboard-cache"] == "bypass"
     assert resp.headers["x-switchboard-attempts"] == "1"
+
+
+def test_response_reports_cost_of_the_request(make_client: Callable[..., TestClient]) -> None:
+    client = make_client(
+        models={
+            "mock": {
+                "targets": [
+                    {
+                        "provider": "mock",
+                        "model": "mock-1",
+                        "input_cost_per_mtok": 1_000_000.0,
+                        "output_cost_per_mtok": 0.0,
+                    }
+                ]
+            }
+        }
+    )
+    resp = client.post(
+        "/v1/chat/completions",
+        json={"model": "mock", "messages": [{"role": "user", "content": "ping"}]},
+    )
+    prompt_tokens = resp.json()["usage"]["prompt_tokens"]
+    assert float(resp.headers["x-switchboard-cost-usd"]) == prompt_tokens
