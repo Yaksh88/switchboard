@@ -13,6 +13,7 @@ from switchboard.api.routes import chat, health
 from switchboard.config import GatewayConfig, Settings, load_gateway_config
 from switchboard.errors import GatewayError
 from switchboard.gateway import Gateway
+from switchboard.redis import create_redis
 from switchboard.schemas import ErrorBody, ErrorResponse
 
 log = logging.getLogger("switchboard")
@@ -33,10 +34,13 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.gateway = Gateway(gateway_config)
+        redis = create_redis(settings.redis_url) if gateway_config.cache.enabled else None
+        app.state.gateway = Gateway(gateway_config, redis)
         log.info("switchboard started with models: %s", ", ".join(app.state.gateway.models()))
         yield
         await app.state.gateway.aclose()
+        if redis is not None:
+            await redis.aclose()
 
     app = FastAPI(title="Switchboard", version=__version__, lifespan=lifespan)
 

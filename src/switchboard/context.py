@@ -25,6 +25,7 @@ class RequestContext:
     upstream_model: str | None = None
     attempts: int = 0
     cache: CacheStatus = "bypass"
+    bypass_cache: bool = False
     usage: Usage | None = None
     status_code: int = 200
     error: str | None = None
